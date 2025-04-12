@@ -57,5 +57,13 @@ namespace Entities.Extensions
             return dt;
         }
 
+        public static async Task<string> GetBody(this Stream body)
+        {
+            body.Position = 0;
+            using StreamReader streamReader = new StreamReader(body, Encoding.UTF8, leaveOpen: true, bufferSize: 8192);
+
+            return await streamReader.ReadToEndAsync();
+        }
+
     }
 }

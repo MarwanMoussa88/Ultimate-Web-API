@@ -1,7 +1,7 @@
-﻿using System.Diagnostics;
-using System.Text;
+﻿using System.Net;
 using System.Text.Json;
 using Domain.Log;
+using Entities.Extensions;
 using Microsoft.AspNetCore.Http.Extensions;
 
 namespace WebAPI.Extensions
@@ -17,6 +17,7 @@ namespace WebAPI.Extensions
 
         public async Task Invoke(HttpContext context)
         {
+            bool isExceptionThrown = false;
             context.Request.EnableBuffering();
 
             Stream orignalResposneBody = context.Response.Body;
@@ -24,8 +25,20 @@ namespace WebAPI.Extensions
             context.Response.Body = responseBody;
 
             var requestLog = await LogRequest(context);
-            await _next.Invoke(context);
-            var responseLog = await LogResponse(context, requestLog);
+            try
+            {
+                await _next.Invoke(context);
+            }
+            catch (Exception ex)
+            {
+                isExceptionThrown = true;
+                await HandleException(context, ex);
+            }
+
+            if (!isExceptionThrown)
+            {
+                var responseLog = await LogResponse(context, requestLog);
+            }
 
             responseBody.Position = 0;
             await responseBody.CopyToAsync(orignalResposneBody);
@@ -44,7 +57,7 @@ namespace WebAPI.Extensions
                 StartTime = DateTime.Now,
                 QueryParams = JsonSerializer.Serialize(context.Request.Query),
                 UserDetails = JsonSerializer.Serialize(context.User),
-                RequestBody = await GetBody(context.Request.Body),
+                RequestBody = await context.Request.Body.GetBody(),
                 RequestPath = context.Request.GetDisplayUrl(),
             };
             return log;
@@ -60,7 +73,7 @@ namespace WebAPI.Extensions
                 ClientIp = context.Connection.RemoteIpAddress.MapToIPv4().ToString(),
                 ElapsedTime = requestLog.StartTime - DateTime.Now,
                 UserDetails = JsonSerializer.Serialize(context.User),
-                ResponseBody = await GetBody(context.Response.Body),
+                Body = await context.Response.Body.GetBody(),
                 RequestPath = context.Request.GetDisplayUrl(),
                 StackTrace = Environment.StackTrace,
                 StatusCode = context.Response.StatusCode
@@ -68,12 +81,28 @@ namespace WebAPI.Extensions
             return log;
         }
 
-        private async Task<string> GetBody(Stream body)
+        private async Task<ResponseLogDetails> HandleException(HttpContext context, Exception exception)
         {
-            body.Position = 0;
-            using StreamReader streamReader = new StreamReader(body, Encoding.UTF8, leaveOpen: true, bufferSize: 8192);
+            context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+            context.Response.ContentType = "application/json";
 
-            return await streamReader.ReadToEndAsync();
+            var response = new ResponseLogDetails()
+            {
+                ResponseId = string.IsNullOrEmpty(context.Request.Headers?.RequestId.ToString()) ? Guid.NewGuid().ToString() : context.Request.Headers?.RequestId,
+                Method = context.Request.Method,
+                UserAgent = context.Request.Headers.UserAgent,
+                ClientIp = context.Connection.RemoteIpAddress.MapToIPv4().ToString(),
+                UserDetails = JsonSerializer.Serialize(context.User),
+                Body = await context.Request.Body.GetBody(),
+                RequestPath = context.Request.GetDisplayUrl(),
+                StackTrace = exception.StackTrace,
+                StatusCode = context.Response.StatusCode,
+                ErrorMessage = exception.Message,
+            };
+
+            await context.Response.WriteAsync(response.ToString());
+            return response;
+
         }
 
     }
