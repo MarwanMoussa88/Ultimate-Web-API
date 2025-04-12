@@ -1,3 +1,5 @@
+using System.Reflection.Metadata;
+using Presentation;
 using WebAPI.Extensions;
 //Add config using builder.configuration
 //registering services using builder.services
@@ -9,7 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 //builder.Services.ConfigureSerilog(builder.Configuration);
 
 //registers controllers only in the IServiceCollection and not views
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddApplicationPart(typeof(PresentationAssemblyReference).Assembly);
 builder.Services.ConfigureCors();
 builder.Services.ConfigureIISIntegration();
 builder.Services.ConfigureAppsettingsOptions(builder.Configuration);

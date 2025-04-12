@@ -42,7 +42,6 @@ namespace WebAPI.Extensions
             services.AddScoped<ISqlHelper, SqlHelper>();
             services.AddScoped<IDapperHelper, DapperHelper>();
             services.AddScoped<IEmployeeService, EmployeeService>();
-
         }
 
     }
